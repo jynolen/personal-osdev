@@ -1,0 +1,89 @@
+version: "3"
+
+vars:
+  GCC_VERSION: 13.2.0
+  BINUTIL_VERSION: 2.41
+  TARGET: i686-elf
+  PREFIX: "{{.PWD }}/.toolchain"
+  ENABLED_LANGUAGE: c,go
+  TOOLS: "binutils gcc"
+  TOOLCHAIN_SH: "{{.PWD }}/toolchain.sh"
+
+env:
+  TOOLCHAIN_PREFIX: "{{ .PREFIX }}"
+
+tasks:
+  download:toolchain:gcc:
+    silent: false
+    cmds:
+      - mkdir -p .toolchain.build/gcc .toolchain.build/src
+      - curl -o .toolchain.build/src/gcc-{{ .GCC_VERSION }}.tar.gz https://ftp.gnu.org/gnu/gcc/gcc-{{ .GCC_VERSION }}/gcc-{{ .GCC_VERSION }}.tar.gz
+    status:
+      - test -f .toolchain.build/src/gcc-{{ .GCC_VERSION }}.tar.gz
+  download:toolchain:binutils:
+    silent: false
+    cmds:
+      - mkdir -p .toolchain.build/binutils .toolchain.build/src
+      - curl -o .toolchain.build/src/binutils-{{ .BINUTIL_VERSION }}.tar.gz https://ftp.gnu.org/gnu/binutils/binutils-{{ .BINUTIL_VERSION }}.tar.gz
+    status:
+      - test -f .toolchain.build/src/binutils-{{ .BINUTIL_VERSION }}.tar.gz
+  extract:toolchain:binutils:
+    dir: .toolchain.build/src
+    deps:
+      - download:toolchain:binutils
+    cmds:
+      - tar -xf gcc-{{ .GCC_VERSION }}.tar.gz
+      - tar -xf binutils-{{ .BINUTIL_VERSION }}.tar.gz
+    status:
+      - test -d gcc-{{ .GCC_VERSION }}
+      - test -d binutils-{{ .BINUTIL_VERSION }}
+  extract:toolchain:gcc:
+    dir: .toolchain.build/src
+    deps:
+      - download:toolchain:gcc
+    cmds:
+      - tar -xf gcc-{{ .GCC_VERSION }}.tar.gz
+      - tar -xf binutils-{{ .BINUTIL_VERSION }}.tar.gz
+    status:
+      - test -d gcc-{{ .GCC_VERSION }}
+      - test -d binutils-{{ .BINUTIL_VERSION }}
+  configure:toolchain:binutils:
+    deps:
+      - extract:toolchain:binutils
+    dir: .toolchain.build/binutils
+    cmds:
+      - '{{ .TOOLCHAIN_SH }} ../src/binutils-{{ .BINUTIL_VERSION }}/configure --target="{{ .TARGET }}" --prefix="{{ .PREFIX }}" --with-sysroot --disable-nls --disable-werror'
+    status:
+      - test -f Makefile
+  configure:toolchain:gcc:
+    deps:
+      - extract:toolchain:gcc
+    dir: .toolchain.build/gcc
+    cmds:
+      - '{{ .TOOLCHAIN_SH }} ../src/gcc-{{ .GCC_VERSION }}/configure --target="{{ .TARGET }}" --prefix="{{ .PREFIX }}" --disable-nls --enable-languages={{ .ENABLED_LANGUAGE }} --without-headers'
+    status:
+      - test -f Makefile
+  make:toolchain:binutils:
+    deps:
+      - configure:toolchain:binutils
+    dir: .toolchain.build/binutils
+    cmds:
+      - "{{ .TOOLCHAIN_SH }} make -j 10"
+      - make install
+    status:
+      - test -f {{ .PREFIX }}/bin/{{.TARGET}}-ar
+  make:toolchain:gcc:
+    deps:
+      - configure:toolchain:gcc
+    dir: .toolchain.build/gcc
+    cmds:
+      - "{{ .TOOLCHAIN_SH }} make -j 10 all-gcc"
+      - "{{ .TOOLCHAIN_SH }} make -j 10 all-target-libgcc"
+      - make install-gcc
+      - make install-target-libgcc
+    status:
+      - test -f {{ .PREFIX }}/bin/{{.TARGET}}-gcc-{{ .GCC_VERSION }}
+  toolchain:
+    deps:
+      - make:toolchain:binutils
+      - make:toolchain:gcc

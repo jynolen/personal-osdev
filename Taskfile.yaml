@@ -1,0 +1,44 @@
+version: "3"
+
+vars:
+  AS: "{{.PWD }}/.toolchain/bin/i686-elf-as"
+  GCCGO: "{{.PWD }}/.toolchain/bin/i686-elf-gccgo"
+  GCC: "{{.PWD }}/.toolchain/bin/i686-elf-gcc"
+  BUILD_DIR: "{{.PWD }}/.build"
+  SRC: "{{.PWD }}/bareBones"
+
+env:
+  TOOLCHAIN_PREFIX: "{{ .PREFIX }}"
+
+tasks:
+  assemble:boot:
+    dir: "{{ .BUILD_DIR }}"
+    sources:
+      - boot.s
+    generates:
+      - "boot.o"
+    cmds:
+      - "{{ .AS }} {{ .SRC }}/boot.s -o boot.o"
+  compile:go:
+    dir: "{{ .BUILD_DIR }}"
+    sources:
+      - "{{.SRC}}/terminal.go"
+      - "{{.SRC}}/kernel.go"
+    generates:
+      - "terminal.go"
+      - "kernel.go"
+    cmds:
+      - "{{ .GCCGO }} -static -Werror -nostdlib -nostartfiles -nodefaultlibs -c {{.SRC}}/terminal.go"
+      - "{{ .GCCGO }} -static -Werror -nostdlib -nostartfiles -nodefaultlibs -c {{.SRC}}/kernel.go"
+  linking:kernel:
+    deps:
+      - compile:go
+      - assemble:boot
+    dir: "{{ .BUILD_DIR }}"
+    sources:
+      - "{{.SRC}}/terminal.go"
+      - "{{.SRC}}/kernel.go"
+    generates:
+      - myos.bin
+    cmds:
+      - "{{ .GCC }} -T {{.SRC}}/linker.ld -o myos.bin -ffreestanding -O2 -nostdlib terminal.o kernel.o -lgcc"
